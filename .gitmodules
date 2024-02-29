@@ -1,0 +1,3 @@
+[submodule "pygameChess"]
+	path = pygameChess
+	url = https://github.com/plemaster01/pygameChess.git
