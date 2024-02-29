@@ -13,7 +13,8 @@ else:
 x = torch.tensor([1.0])
 x = x.to(device)
 print(x)
-
+validateData = input("Want to validate the data? (y/n) <enter/return = n>")
+inputToOutput = input("Want to train modelCopy.pt to copy input to output? (y/n) <enter/return = n>")
 # %%
 def en_passant_to_index(coordinate):
     # Convert the file into a 0-based index (a=0, b=1, ..., h=7)
@@ -30,23 +31,6 @@ def en_passant_to_index(coordinate):
 # For a white pawn moving from e2 to e4, the en passant target is e3.
 index, en_passant_char = en_passant_to_index('e3')
 print(f"The index for the en passant target 'e3' is {index} and the character is '{en_passant_char}'.")
-
-
-# # define the function to add the enpassant target rows
-# def addEnpassantTargets(origRow, fen, i):
-#     # create a string to represent the row
-#     # throw an error if i is not 2 or 6
-#     if(i != 2 and i != 5):
-#         raise ValueError("i must be 2 or 6")
-#     row = origRow
-#     if(fen[3] != "-"):
-#         if(int(fen[3][1]) == i + 1 or int(fen[3][1]) == i):
-#             cols = "abcdefgh"
-#             index = cols.index(fen[3][0])
-#             # use the simplest notation to replace the character at the index with the t character
-#             row = row[:index] + ("T" if i == 2 else "t") + row[index + 1:]
-#     # set row to the 8 char substring of all starting at side * 8
-#     return row
 
 # %%
 def castlingRightsToString(castlingRights):
@@ -347,7 +331,7 @@ def encode_custom_fen(custom_fen):
     # encoded = np.array([ordinal_values[char] for char in custom_fen])
     # define a dictionary to hold the ordinal values for each piece.  Use negative numbers for black, and positive for white.
     # pawns are 1, knights are 3, bishops 3.5, rooks 5, queens 9, and kings 15
-    pieceValues = {'R': 5, 'N': 3, 'B': 3.5, 'Q': 9, 'K': 15, 'P': 1, 'T': 1.3, 'r': -5, 'n': -3, 'b': -3.5, 'q': -9, 'k': -15, 'p': -1, 't': -1.3, '0': 0}
+    pieceValues = {'R': 5, 'N': 3, 'B': 3.5, 'Q': 9, 'K': 15, 'P': 1, 'T': 1.5, 'r': -5, 'n': -3, 'b': -3.5, 'q': -9, 'k': -15, 'p': -1, 't': -1.5, '0': 0}
     moveTurn = {'w': 1, 'b': -1}
     # in general castlingRights = {'K': 1, 'Q': 1, 'k': -1, 'q': -1, '-': 0}
     # however it needs to be split into 4 separate dictionaries
@@ -376,7 +360,7 @@ def unencode_custom_fen(encoded_custom_fen):
     # decoded = np.array([ordinal_values[char].index(char) for char in custom_fen])
     # define a dictionary to hold the ordinal values for each piece.  Use negative numbers for black, and positive for white.
     # pawns are 1, knights are 3, bishops 3.5, rooks 5, queens 9, and kings 15
-    pieceValues = {5: 'R', 3: 'N', 3.5: 'B', 9: 'Q', 15: 'K', 1: 'P', 1.3: 'T', -5: 'r', -3: 'n', -3.5: 'b', -9: 'q', -15: 'k', -1: 'p', -1.3: 't', 0: '0'}
+    pieceValues = {5: 'R', 3: 'N', 3.5: 'B', 9: 'Q', 15: 'K', 1: 'P', 1.5: 'T', -5: 'r', -3: 'n', -3.5: 'b', -9: 'q', -15: 'k', -1: 'p', -1.5: 't', 0: '0'}
     moveTurn = {1: 'w', -1: 'b'}
     # in general castlingRights = {1: 'K', 1: 'Q', -1: 'k', -1: 'q', 0: '-'}
     # but must be split into 4 separate dictionaries
@@ -425,7 +409,7 @@ training_df = pd.read_csv(training_csv)
 # loop manually through each record to spot any anomalies
 badCount = 0
 indexListOfBad = []
-validateTrainingAndLabelData = False;
+validateTrainingAndLabelData = False if validateData == "n" or validateData == "" else True
 if validateTrainingAndLabelData:
     for i in range(0, len(training_df)):
         # don't print anything unless there is an anomaly
@@ -520,14 +504,28 @@ print(y_raw.shape)
 X_min = X_raw.min(axis=0)
 X_max = X_raw.max(axis=0)
 
-# Normalize both X and y using the Min-Max scaling method based on X's min and max
-X = 2 * ((X_raw - X_min) / (X_max - X_min)) - 1
-y = 2 * ((y_raw - X_min) / (X_max - X_min)) - 1
+# Normalize both X and y to be between 0 and 1 using the Min-Max scaling method based on X's min and max
+X = (X_raw - X_min) / (X_max - X_min)
+y = (y_raw - X_min) / (X_max - X_min)
 
 # print about 10 records to make sure the normalization worked
 for i in range(0, 10):
     print(X[i])
     print(y[i])
+
+    
+modelPT = "model.pt"
+# if true we are just going to train a model to copy the input to the output
+testTraining = False if inputToOutput == "n" or inputToOutput == "" else True
+if testTraining:
+    modelPT = "modelCopy.pt"
+    # copy training data to labels, first checking the type of data, and accordingly making sure its a true copy, not a reference
+    if isinstance(X, np.ndarray):
+        y = np.copy(X)
+    #else raise an exception
+    else:
+        raise Exception("The type of X is not a numpy array")    
+    
 
 # Split the dataset into training and validation sets
 train_size = int(0.8 * len(X))
@@ -554,42 +552,33 @@ import matplotlib.pyplot as plt
 # import torch to use the neural network
 import torch
 # proceed towards training the model to use ordinal encoded data
-# define the model usint Tanh activation function
-import torch.nn as nn
+# define the model usint Relu activation function
+import torch.nn.functional as F
 
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
-        # Define the first layer with input size 69 and output size 202 (double the original middle layer size)
         self.layer1 = nn.Linear(69, 202)
-        # Define the new middle layer with input size 202 and output size 202 (doubled size)
+        self.bn1 = nn.BatchNorm1d(202)
         self.layer2 = nn.Linear(202, 202)
-        # Define the third layer symmetric to the first layer
+        self.bn2 = nn.BatchNorm1d(202)
         self.layer3 = nn.Linear(202, 202)
-        # Define the fourth layer with output size 69, symmetric to the input layer
+        self.bn3 = nn.BatchNorm1d(202)
         self.layer4 = nn.Linear(202, 69)
-        # Activation function
-        self.activation = nn.Tanh()
+        self.dropout = nn.Dropout(0.5)  # Example dropout layer
 
     def forward(self, x):
-        x = self.layer1(x)
-        x = self.activation(x)
-        x = self.layer2(x)
-        x = self.activation(x)
-        x = self.layer3(x)
-        x = self.activation(x)
-        x = self.layer4(x)
-        x = self.activation(x)
+        x = F.relu(self.bn1(self.layer1(x)))
+        x = self.dropout(x)  # Apply dropout after activation
+        x = F.relu(self.bn2(self.layer2(x)))
+        x = F.relu(self.bn3(self.layer3(x)))
+        x = self.layer4(x)  # No activation here, assuming a regression task
         return x
 
-
-
-# %%
-    
 # create the neural network
 neuralNetwork = NeuralNetwork()
 try:   
-    neuralNetwork.load_state_dict(torch.load("model.pt"))
+    neuralNetwork.load_state_dict(torch.load(modelPT))
 except:
     print("The model does not exist yet")
 neuralNetwork.to(device)
@@ -598,11 +587,12 @@ neuralNetwork.to(device)
 criterion = nn.MSELoss()
 
 # create the optimizer
-optimizer = optim.Adam(neuralNetwork.parameters(), lr=0.0024)
+optimizer = torch.optim.Adam(neuralNetwork.parameters(), lr=0.001)  # Adjust based on experiment
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)  # More aggressive schedule
 
 # train the neural network
 lossHistory = []
-for epoch in range(1500):
+for epoch in range(500):
     for i, data in enumerate(train_loader, 0):
         inputs, labels = data
         inputs = inputs.to(device)
@@ -612,11 +602,16 @@ for epoch in range(1500):
         loss = criterion(outputs.float(), labels.float())
         loss.backward()
         optimizer.step()
+    
+    # Step the scheduler after each epoch
+    scheduler.step()
+
     lossHistory.append(loss.item())
     print("Epoch: ", epoch, " Loss: ", loss.item())
 
+
 # save the neural network
-torch.save(neuralNetwork.state_dict(), "model.pt")
+torch.save(neuralNetwork.state_dict(), modelPT)
 
 # save the loss history
 lossHistory = pd.DataFrame(lossHistory, columns=["Loss"])
@@ -682,7 +677,7 @@ class ChessAI:
         return best_move_fen, abbreviated_pgn
 
 # Usage example
-chess_ai = ChessAI("model.pt")
+chess_ai = ChessAI(modelPT)
 chosenFEN = "r3k2r/pp2nppp/2n5/3pP3/2q2Bb1/5N2/PP2NQPP/R3K2R w KQkq - 4 7"
 output = chess_ai.predict(chosenFEN)
 print("Predicted Output: ", np.round(output, 4))
@@ -745,7 +740,7 @@ def get_best_move(fen, neural_network, X_min, X_max, encoded_fens):
 
 # Define the necessary variables
 neural_network = NeuralNetwork()
-neural_network.load_state_dict(torch.load("model.pt"))
+neural_network.load_state_dict(torch.load(modelPT))
 neural_network.to(torch.device("cpu"))
 
 # Define the encoded FENs dictionary
@@ -770,7 +765,7 @@ def on_move_made(move):
 
 
 # %%
-chess_ai = ChessAI("model.pt")
+chess_ai = ChessAI(modelPT)
 while True:
     chosenFEN = input("Enter a FEN string or type 'quit' to exit: ")
     if chosenFEN.lower() == 'quit':
